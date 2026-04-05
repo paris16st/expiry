@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="theme-color" content="#F0F1F5"/>
+  <title>유통기한 관리</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;900&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+    html,body{height:100%;background:#ECEEF4}
+    body{font-family:'Noto Sans KR','Apple SD Gothic Neo',sans-serif;color:#1A1F2E;font-size:16px}
+    #root{min-height:100vh}
+    input[type=date]::-webkit-calendar-picker-indicator{opacity:0.5;cursor:pointer}
+    input[type=time]::-webkit-calendar-picker-indicator{opacity:0.5;cursor:pointer}
+    select option{background:#fff;color:#1A1F2E}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    ::-webkit-scrollbar{width:4px;height:4px}
+    ::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:4px}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script type="text/babel">
+const {useState,useEffect,useMemo,useRef,useCallback} = React;
+
+// ─── Firebase 설정 ────────────────────────────────────────────────────────────
+const LOCAL_KEY = "expiry_v7_local";
+const DB_URL = "https://parismunhyunst-default-rtdb.firebaseio.com";
+const DB_PATH = "/expiry_store.json";
+
+// ─── 카테고리 ─────────────────────────────────────────────────────────────────
+const INIT_CATS = [
+  {id:"c_cake",  name:"케이크",     type:"produced", expiryDays:2, color:"#E05C5C", icon:"🎂", useTime:false},
+  {id:"c_piece", name:"조각/디저트",type:"produced", expiryDays:2, color:"#E07B3A", icon:"🍰", useTime:false},
+  {id:"c_sand",  name:"샌드위치",   type:"supplied",               color:"#D4870F", icon:"🥪", useTime:true},
+  {id:"c_sauce", name:"샐러드소스", type:"supplied",               color:"#3D9E5A", icon:"🥗", useTime:false},
+  {id:"c_etc",   name:"기타",       type:"mixed",                  color:"#B8960C", icon:"🍡", useTime:false},
+  {id:"c_dairy", name:"유제품",     type:"supplied",               color:"#1A8FA0", icon:"🥛", useTime:true},
+  {id:"c_choco", name:"초콜릿",     type:"supplied",               color:"#B03070", icon:"🍫", useTime:false},
+  {id:"c_long",  name:"장기유통",   type:"supplied",               color:"#6B4BB5", icon:"📦", useTime:false},
+  {id:"c_drink", name:"음료",       type:"supplied",               color:"#1A6EC2", icon:"🥤", useTime:false},
+  {id:"c_spread",name:"스프레드쨈", type:"supplied",               color:"#C2743A", icon:"🫙", useTime:false},
+  {id:"c_fck",   name:"FCK",        type:"supplied",               color:"#5A8A3C", icon:"🧃", useTime:false},
+];
+
+const INIT_TMPLS = [
+  {catId:"c_cake",name:"신)LA올레케이크",expiryDays:2},
+  {catId:"c_cake",name:"신)치즈수플레케이크",expiryDays:2},
+  {catId:"c_cake",name:"신)티트라 얼그레이",expiryDays:2},
+  {catId:"c_cake",name:"마이넘버원",expiryDays:2},
+  {catId:"c_cake",name:"초코반 딸기반",expiryDays:2},
+  {catId:"c_cake",name:"고구마반 생크림반",expiryDays:2},
+  {catId:"c_cake",name:"클래식 고구마",expiryDays:2},
+  {catId:"c_cake",name:"클래식 치즈",expiryDays:4},
+  {catId:"c_cake",name:"초코바닐라 마블쉬폰",expiryDays:2},
+  {catId:"c_cake",name:"블루베리쉬폰(2호)",expiryDays:2},
+  {catId:"c_cake",name:"미니)티라미수",expiryDays:2},
+  {catId:"c_cake",name:"미니)딸기블라썸",expiryDays:2},
+  {catId:"c_cake",name:"딸기듬뿍프레지에",expiryDays:2},
+  {catId:"c_cake",name:"더피",expiryDays:2},
+  {catId:"c_cake",name:"더피 복케이크",expiryDays:2},
+  {catId:"c_cake",name:"헌트릭스",expiryDays:2},
+  {catId:"c_cake",name:"헌트릭스골든",expiryDays:2},
+  {catId:"c_cake",name:"사자보이즈",expiryDays:2},
+  {catId:"c_cake",name:"안녕스노우맨",expiryDays:2},
+  {catId:"c_cake",name:"저당)그릭 홀케이크",expiryDays:2},
+  {catId:"c_cake",name:"베리밤케이크",expiryDays:2},
+  {catId:"c_cake",name:"레드밤레드케이크",expiryDays:2},
+  {catId:"c_cake",name:"두쫀팝 케이크",expiryDays:2},
+  {catId:"c_cake",name:"저당)카카오 케이크",expiryDays:2},
+  {catId:"c_cake",name:"우유(듬뿍)1호_리본",expiryDays:2},
+  {catId:"c_cake",name:"우유(듬뿍)2호_리본",expiryDays:2},
+  {catId:"c_cake",name:"우유(듬뿍)3호_리본",expiryDays:2},
+  {catId:"c_cake",name:"우유(듬뿍)1호",expiryDays:2},
+  {catId:"c_cake",name:"우유(듬뿍)2호",expiryDays:2},
+  {catId:"c_cake",name:"우유(듬뿍)3호",expiryDays:2},
+  {catId:"c_cake",name:"우유풍당(줄무늬)_1",expiryDays:2},
+  {catId:"c_cake",name:"우유풍당(줄무늬)_2",expiryDays:2},
+  {catId:"c_cake",name:"우유가득_1(코코넛가루)",expiryDays:2},
+  {catId:"c_cake",name:"우유가득_2(코코넛가루)",expiryDays:2},
+  {catId:"c_piece",name:"조각) 가나슈",expiryDays:2},
+  {catId:"c_piece",name:"조각) 치즈",expiryDays:2},
+  {catId:"c_piece",name:"조각) 레인보우",expiryDays:2},
+  {catId:"c_piece",name:"조각) 15겹크레이프",expiryDays:2},
+  {catId:"c_piece",name:"조각) 티라미수",expiryDays:2},
+  {catId:"c_piece",name:"조각) 고구마",expiryDays:2},
+  {catId:"c_piece",name:"조각) 피치얼그레이",expiryDays:2},
+  {catId:"c_piece",name:"조각) 블루베리요거트",expiryDays:2},
+  {catId:"c_piece",name:"조각) 딸기생크림",expiryDays:2},
+  {catId:"c_piece",name:"조각) 저당그릭요거트",expiryDays:2},
+  {catId:"c_piece",name:"조각) 저당카카오",expiryDays:2},
+  {catId:"c_piece",name:"치즈가 부드러운 시간",expiryDays:2},
+  {catId:"c_piece",name:"초코가 달콤한 시간",expiryDays:2},
+  {catId:"c_piece",name:"LA우피파이",expiryDays:5},
+  {catId:"c_piece",name:"초코마카롱",expiryDays:5},
+  {catId:"c_piece",name:"딸기마카롱",expiryDays:5},
+  {catId:"c_piece",name:"바닐라마카롱",expiryDays:5},
+  {catId:"c_piece",name:"블루베리마카롱",expiryDays:5},
+  {catId:"c_sand",name:"미니버거"},
+  {catId:"c_sand",name:"브라운디럭스"},
+  {catId:"c_sand",name:"크랜베리브라운"},
+  {catId:"c_sand",name:"BELT"},
+  {catId:"c_sand",name:"건강한치킨에그샌드위치"},
+  {catId:"c_sand",name:"토종효모"},
+  {catId:"c_sand",name:"3가지맛 굿모닝"},
+  {catId:"c_sauce",name:"발사믹"},
+  {catId:"c_sauce",name:"스위트머스타드"},
+  {catId:"c_sauce",name:"시저"},
+  {catId:"c_sauce",name:"흑임자"},
+  {catId:"c_sauce",name:"애플&키위드레싱"},
+  {catId:"c_sauce",name:"할라피뇨&랜치드레싱"},
+  {catId:"c_etc",name:"고운단판만주"},
+  {catId:"c_etc",name:"고운밤만주"},
+  {catId:"c_etc",name:"찹쌀떡"},
+  {catId:"c_etc",name:"초코 휘낭시에"},
+  {catId:"c_etc",name:"아몬드 피낭시에"},
+  {catId:"c_etc",name:"바닐라 마들렌"},
+  {catId:"c_etc",name:"만월빵(개별)"},
+  {catId:"c_etc",name:"밤양갱"},
+  {catId:"c_dairy",name:"흰우유_930ML"},
+  {catId:"c_dairy",name:"흰우유_450ML"},
+  {catId:"c_dairy",name:"흰우유_200ML"},
+  {catId:"c_dairy",name:"바나나우유"},
+  {catId:"c_dairy",name:"초코우유"},
+  {catId:"c_dairy",name:"딸기우유"},
+  {catId:"c_dairy",name:"서울우유_라떼용"},
+  {catId:"c_choco",name:"씨쉘 미니"},
+  {catId:"c_choco",name:"씨쉘 중"},
+  {catId:"c_choco",name:"씨쉘 대"},
+  {catId:"c_choco",name:"곰곰이 베리 하트해"},
+  {catId:"c_choco",name:"보브로) 판나코타"},
+  {catId:"c_choco",name:"보브로) 헤이즐넛"},
+  {catId:"c_choco",name:"보브로) 헤코코넛&헤이즐넛"},
+  {catId:"c_choco",name:"보브로) 카라멜"},
+  {catId:"c_choco",name:"보브로) 하트 골든"},
+  {catId:"c_choco",name:"하트딸기프레첼"},
+  {catId:"c_choco",name:"하트초코프레첼"},
+  {catId:"c_long",name:"라고) 헤이즐넛 웨하스"},
+  {catId:"c_long",name:"라고) 바닐라 웨하스"},
+  {catId:"c_long",name:"라고) 카카오 웨하스"},
+  {catId:"c_long",name:"사브레) 바닐라"},
+  {catId:"c_long",name:"사브레) 쇼콜라"},
+  {catId:"c_long",name:"사브레) 크랜베리"},
+  {catId:"c_long",name:"랑그드샤) 딸기라떼"},
+  {catId:"c_long",name:"랑그드샤) 말차"},
+  {catId:"c_long",name:"랑그드샤) 초코티라미수"},
+  {catId:"c_long",name:"두부크런치) 아몬드피칸"},
+  {catId:"c_long",name:"두부크런치) 오트현미"},
+  {catId:"c_long",name:"한입에쏙 잣엿"},
+  {catId:"c_long",name:"한입에쏙 호두엿"},
+  {catId:"c_long",name:"한입에쏙 호박엿"},
+  {catId:"c_drink",name:"흑미보리차"},
+  {catId:"c_drink",name:"(검은콩)프로틴쉐이크"},
+  {catId:"c_drink",name:"(미숫가루)프로틴쉐이크"},
+  {catId:"c_drink",name:"(검은콩)쏘유두유"},
+  {catId:"c_drink",name:"(플레인)쏘유두유"},
+  {catId:"c_drink",name:"(복숭아&망고)데일리주스"},
+  {catId:"c_drink",name:"(포도)데일리주스"},
+  {catId:"c_drink",name:"비다)민티라임향"},
+  {catId:"c_drink",name:"비다)오리지날시트러스향"},
+  {catId:"c_drink",name:"비타톤)사과맛"},
+  {catId:"c_drink",name:"비타톤)포도맛"},
+  {catId:"c_drink",name:"생생제주유기농감귤"},
+  {catId:"c_drink",name:"치키피치티"},
+  {catId:"c_drink",name:"짱구는못말려청포도맛PET"},
+  {catId:"c_spread",name:"카우엣 피넛버터 크리미"},
+  {catId:"c_spread",name:"카우엣 피넛버터 크런치"},
+  {catId:"c_spread",name:"알라 크림치즈"},
+  {catId:"c_spread",name:"루어팍 버터_미니"},
+  {catId:"c_spread",name:"레피시에 딸기잼"},
+  {catId:"c_spread",name:"레피시에 딸기잼 105g(미니)"},
+  {catId:"c_spread",name:"레피시에 블루베리믹스잼"},
+  {catId:"c_spread",name:"저당 딸기잼"},
+  {catId:"c_spread",name:"아몬드 스프레드"},
+  {catId:"c_spread",name:"온브레드 크림치즈(갈릭)"},
+  {catId:"c_spread",name:"온브레드 크림치즈 딸기(미니)"},
+  {catId:"c_fck",name:"미트볼&트러플오일 까르보나라"},
+  {catId:"c_fck",name:"함박스테이크파스타"},
+  {catId:"c_fck",name:"매콤 핫 투움바 파스타"},
+  {catId:"c_fck",name:"치즈듬뿍 치킨로제도리아"},
+  {catId:"c_fck",name:"쉬림프 비스큐 리조또"},
+  {catId:"c_fck",name:"트러플오일&버섯크림 파스타"},
+  {catId:"c_fck",name:"치즈듬뿍 볼로네제 파스타"},
+  {catId:"c_fck",name:"단백가득 닭가슴살바 청양고추"},
+  {catId:"c_fck",name:"리코타 토마토 파스타"},
+  {catId:"c_fck",name:"중화 울면"},
+  {catId:"c_fck",name:"콰트로 포르마지 피자"},
+  {catId:"c_fck",name:"대파듬뿍크림치즈베이글샌드"},
+  {catId:"c_fck",name:"베이컨스크램블드에그베이글"},
+  {catId:"c_fck",name:"중화풍 잡채볶음밥"},
+  {catId:"c_fck",name:"새우갈릭볶음밥"},
+  {catId:"c_fck",name:"빠삭 꿔바로우"},
+  {catId:"c_fck",name:"더블 페퍼로니 피자"},
+];
+
+// 체크리스트 항목
+const CHECKLIST_ITEMS = ["우유","완제빵","버터케이크","반제케이크","선물류(롤케익/파운드/대형선물류)","미니제품(구움과자)","샐러드소스","샌드위치"];
+
+// ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
+const pad = n=>String(n).padStart(2,'0');
+function parseLocalDate(s){
+  if(!s) return new Date();
+  const [y,mo,d]=(s+'').substring(0,10).split('-').map(Number);
+  return new Date(y,mo-1,d);
+}
+function getDatePart(s){
+  if(!s) return '';
+  const str=String(s).trim();
+  if(/^\d{4}-\d{2}-\d{2}/.test(str)) return str.substring(0,10);
+  const m=str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(m) return `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;
+  const m2=str.match(/^(\d{4})\.(\d{1,2})\.(\d{1,2})/);
+  if(m2) return `${m2[1]}-${m2[2].padStart(2,'0')}-${m2[3].padStart(2,'0')}`;
+  return str.substring(0,10);
+}
+const fmtDate = d=>{ const x=(typeof d==='string')?parseLocalDate(d):(d instanceof Date?d:new Date(d)); return `${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}`; };
+const fmtShort = d=>{ if(!d)return''; const x=parseLocalDate(d); return `${x.getMonth()+1}/${x.getDate()}`; };
+const addDays = (s,n)=>{ const d=parseLocalDate(s); d.setDate(d.getDate()+n); return fmtDate(d); };
+const todayStr = ()=>fmtDate(new Date());
+const tomorrowStr = ()=>{ const d=new Date(); d.setDate(d.getDate()+1); return fmtDate(d); };
+const thisMonthStr = ()=>{ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}`; };
+
+function getStatus(exp){
+  const ep=getDatePart(exp||'');
+  if(!ep||ep.length<10||!/^\d{4}-\d{2}-\d{2}$/.test(ep)) return 'nodate';
+  const t=todayStr(),tom=tomorrowStr(),m=thisMonthStr();
+  if(ep<t) return 'expired';
+  if(ep===t) return 'today';
+  if(ep===tom) return 'tomorrow';
+  if(ep.startsWith(m)) return 'month';
+  return 'ok';
+}
+const SM={
+  expired: {bg:'rgba(0,0,0,0.05)',border:'rgba(0,0,0,0.12)',color:'#AAA',cardBg:'#EFEFEF'},
+  today:   {bg:'rgba(220,50,50,0.09)',border:'#E05050',color:'#C03030',cardBg:'#FFF0F0'},
+  tomorrow:{bg:'rgba(200,120,0,0.07)',border:'rgba(200,120,0,0.4)',color:'#A06010',cardBg:'#FFF8EC'},
+  month:   {bg:'rgba(30,100,220,0.06)',border:'rgba(30,100,220,0.28)',color:'#1A60CC',cardBg:'#F0F4FF'},
+  ok:      {bg:'rgba(0,0,0,0.02)',border:'rgba(0,0,0,0.09)',color:'#777',cardBg:'#F5F6FA'},
+  nodate:  {bg:'rgba(0,0,0,0.02)',border:'rgba(0,0,0,0.09)',color:'#BBB',cardBg:'#F8F8F8'},
+};
+
+function normalizeProducts(products){
+  return (products||[]).map(p=>({...p,expiryDate:p.expiryDate?getDatePart(p.expiryDate):'',productionDate:p.productionDate?getDatePart(p.productionDate):undefined}));
+}
+
+// ─── Firebase 동기화 (REST API) ───────────────────────────────────────────────
+async function cloudSave(data){
+  try{
+    const res = await fetch(DB_URL + DB_PATH, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(data),
+    });
+    return res.ok;
+  }catch(e){ return false; }
+}
+async function cloudLoad(){
+  try{
+    const res = await fetch(DB_URL + DB_PATH);
+    if(!res.ok) return null;
+    return await res.json();
+  }catch(e){ return null; }
+}
+
+// ─── 스토리지 훅 ─────────────────────────────────────────────────────────────
+function useStorage(){
+  const [data,setData]=useState(()=>{
+    try{
+      const r=localStorage.getItem(LOCAL_KEY);
+      if(r){ const p=JSON.parse(r); p.products=normalizeProducts(p.products); return p; }
+    }catch{}
+    return {categories:INIT_CATS,templates:INIT_TMPLS,products:[]};
+  });
+  const [syncStatus,setSyncStatus]=useState('idle'); // idle|syncing|ok|error
+  const [lastSync,setLastSync]=useState(null);
+
+  // 로컬 저장
+  useEffect(()=>{ try{localStorage.setItem(LOCAL_KEY,JSON.stringify(data));}catch{} },[data]);
+
+  // 클라우드에서 초기 로드
+  useEffect(()=>{
+    setSyncStatus('syncing');
+    cloudLoad().then(cloud=>{
+      if(cloud&&cloud.products){
+        cloud.products=normalizeProducts(cloud.products);
+        setData(cloud);
+        setSyncStatus('ok');
+        setLastSync(new Date());
+      } else { setSyncStatus('ok'); }
+    }).catch(()=>setSyncStatus('error'));
+  },[]);
+
+  // 데이터 변경시 클라우드 저장
+  const saveToCloud = useCallback(async(newData)=>{
+    setSyncStatus('syncing');
+    const ok = await cloudSave(newData);
+    setSyncStatus(ok?'ok':'error');
+    if(ok) setLastSync(new Date());
+  },[]);
+
+  function update(fn){
+    setData(prev=>{
+      const next = fn(prev);
+      saveToCloud(next);
+      return next;
+    });
+  }
+
+  // 수동 새로고침
+  async function refresh(){
+    setSyncStatus('syncing');
+    const cloud = await cloudLoad();
+    if(cloud&&cloud.products){
+      cloud.products=normalizeProducts(cloud.products);
+      setData(cloud);
+      setSyncStatus('ok');
+      setLastSync(new Date());
+    } else { setSyncStatus('error'); }
+  }
+
+  return {data, update, syncStatus, lastSync, refresh};
+}
+
+// ─── 공통 UI ─────────────────────────────────────────────────────────────────
+const LBL={fontSize:'12px',color:'#888',marginBottom:'5px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.06em',display:'block'};
+const IST={width:'100%',background:'#fff',border:'1.5px solid #D8DAE5',borderRadius:'10px',padding:'10px 13px',color:'#1A1F2E',fontSize:'15px',outline:'none',fontFamily:'inherit',boxSizing:'border-box'};
+
+function Inp({label,...p}){ return <div style={{marginBottom:'12px'}}>{label&&<span style={LBL}>{label}</span>}<input {...p} style={{...IST,...(p.style||{})}}/></div>; }
+function Sel({label,children,...p}){ return <div style={{marginBottom:'12px'}}>{label&&<span style={LBL}>{label}</span>}<select {...p} style={{...IST,...(p.style||{})}}>{children}</select></div>; }
+function Btn({children,v='pri',sm,...p}){
+  const s={pri:{background:'#4A7DF0',color:'#fff',border:'none'},dan:{background:'#E04040',color:'#fff',border:'none'},gho:{background:'transparent',color:'#555',border:'1.5px solid #CCC'},war:{background:'#E08010',color:'#fff',border:'none'},suc:{background:'#2EA86B',color:'#fff',border:'none'}}[v]||{};
+  return <button {...p} style={{borderRadius:sm?'8px':'11px',padding:sm?'6px 14px':'11px 20px',fontSize:sm?'13px':'15px',fontWeight:600,cursor:'pointer',fontFamily:'inherit',...s,...(p.style||{})}}>{children}</button>;
+}
+function Modal({title,onClose,wide,children}){
+  return <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:999,padding:'16px'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{background:'#F4F5F9',borderRadius:'20px',width:'100%',maxWidth:wide?'700px':'540px',maxHeight:'93vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.2)',animation:'slideUp 0.2s ease',border:'1px solid #DDE0EA'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'22px 24px 0'}}>
+        <h2 style={{margin:0,fontSize:'18px',fontWeight:700,color:'#1A1F2E'}}>{title}</h2>
+        <button onClick={onClose} style={{background:'rgba(0,0,0,0.07)',border:'none',color:'#555',width:'32px',height:'32px',borderRadius:'50%',cursor:'pointer',fontSize:'18px',display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
+      </div>
+      <div style={{padding:'18px 24px 24px'}}>{children}</div>
+    </div>
+  </div>;
+}
+
+// ─── 동기화 상태 표시 ──────────────────────────────────────────────────────────
+function SyncBadge({status,lastSync,onRefresh}){
+  const cfg={
+    idle:{color:'#AAA',label:''},
+    syncing:{color:'#4A7DF0',label:'동기화중...'},
+    ok:{color:'#2EA86B',label:'동기화됨'},
+    error:{color:'#E04040',label:'오프라인'},
+  }[status]||{};
+  const t=lastSync?`${lastSync.getHours()}:${pad(lastSync.getMinutes())}`:'';
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:'6px',fontSize:'12px',color:cfg.color,cursor:'pointer'}} onClick={onRefresh}>
+      {status==='syncing'?<span style={{display:'inline-block',width:'10px',height:'10px',border:`2px solid ${cfg.color}`,borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/>:<span style={{width:'8px',height:'8px',borderRadius:'50%',background:cfg.color,display:'inline-block'}}/>}
+      {cfg.label}{t&&status==='ok'?` ${t}`:''}
+    </div>
+  );
+}
+
+// ─── 체크리스트 뷰 ────────────────────────────────────────────────────────────
+function ChecklistView({products, categories}){
+  const [checks,setChecks]=useState({});
+  const [date,setDate]=useState(todayStr());
+
+  // 오늘 폐기 대상
+  const todayExpired = useMemo(()=>{
+    return products.filter(p=>{
+      const s=getStatus(p.expiryDate);
+      return s==='today'||s==='expired';
+    }).sort((a,b)=>a.expiryDate.localeCompare(b.expiryDate));
+  },[products]);
+
+  // 날짜 바뀌면 체크 초기화
+  useEffect(()=>{ setChecks({}); },[date]);
+
+  const allChecked = CHECKLIST_ITEMS.every((_,i)=>checks[i]);
+
+  return (
+    <div style={{animation:'fadeIn 0.2s ease'}}>
+      {/* 체크리스트 카드 */}
+      <div style={{background:'#fff',borderRadius:'18px',padding:'20px 22px',boxShadow:'0 2px 12px rgba(0,0,0,0.07)',border:'1px solid #E8EAF0',marginBottom:'16px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+          <div>
+            <div style={{fontWeight:900,fontSize:'18px',color:'#1A1F2E'}}>유통기한 체크리스트</div>
+            <div style={{fontSize:'13px',color:'#AAA',marginTop:'2px'}}>{date} 점검</div>
+          </div>
+          {allChecked
+            ?<span style={{background:'#2EA86B',color:'#fff',fontSize:'12px',fontWeight:700,padding:'5px 12px',borderRadius:'20px'}}>✓ 완료</span>
+            :<span style={{background:'#FFF0E0',color:'#D4870F',fontSize:'12px',fontWeight:700,padding:'5px 12px',borderRadius:'20px'}}>{Object.keys(checks).filter(k=>checks[k]).length}/{CHECKLIST_ITEMS.length}</span>
+          }
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+          {CHECKLIST_ITEMS.map((item,i)=>{
+            const checked=!!checks[i];
+            return (
+              <div key={i} onClick={()=>setChecks(prev=>({...prev,[i]:!prev[i]}))}
+                style={{display:'flex',alignItems:'center',gap:'12px',padding:'13px 16px',borderRadius:'12px',cursor:'pointer',background:checked?'#F0FFF6':'#F8F9FD',border:`1.5px solid ${checked?'#2EA86B':'#E8EAF0'}`,transition:'all 0.15s'}}>
+                <div style={{width:'24px',height:'24px',borderRadius:'8px',border:`2px solid ${checked?'#2EA86B':'#CCC'}`,background:checked?'#2EA86B':'#fff',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:'14px',color:'#fff',transition:'all 0.15s'}}>
+                  {checked?'✓':''}
+                </div>
+                <span style={{fontSize:'16px',fontWeight:checked?700:500,color:checked?'#1A7A4A':'#1A1F2E',textDecoration:checked?'line-through':'none',textDecorationColor:'#2EA86B'}}>{item}</span>
+              </div>
+            );
+          })}
+        </div>
+        <button onClick={()=>setChecks({})} style={{marginTop:'14px',width:'100%',background:'transparent',border:'1px solid #DDD',borderRadius:'10px',padding:'8px',fontSize:'13px',color:'#AAA',cursor:'pointer',fontFamily:'inherit'}}>초기화</button>
+      </div>
+
+      {/* 오늘 폐기 대상 */}
+      <div style={{background:'#fff',borderRadius:'18px',padding:'20px 22px',boxShadow:'0 2px 12px rgba(0,0,0,0.07)',border:'1px solid #E8EAF0'}}>
+        <div style={{fontWeight:700,fontSize:'16px',color:'#1A1F2E',marginBottom:'12px',display:'flex',alignItems:'center',gap:'8px'}}>
+          <span>🗑 오늘 폐기대상</span>
+          {todayExpired.length>0&&<span style={{background:'#E04040',color:'#fff',fontSize:'12px',fontWeight:700,padding:'2px 8px',borderRadius:'20px'}}>{todayExpired.length}</span>}
+        </div>
+        {todayExpired.length===0
+          ?<div style={{textAlign:'center',padding:'28px',color:'#CCC',fontSize:'14px'}}>✅ 오늘 폐기 대상 없음</div>
+          :<div style={{display:'flex',flexDirection:'column',gap:'7px'}}>
+            {todayExpired.map(p=>{
+              const cat=categories.find(c=>c.id===p.categoryId);
+              const showTime=cat&&cat.useTime&&p.productionTime;
+              const status=getStatus(p.expiryDate);
+              return (
+                <div key={p.id} style={{display:'flex',alignItems:'center',gap:'10px',padding:'11px 14px',borderRadius:'12px',background:status==='expired'?'#F5F5F5':'#FFF0F0',border:`1.5px solid ${status==='expired'?'#DDD':'#FFAAAA'}`}}>
+                  <span style={{fontSize:'16px'}}>{cat?.icon}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:'14px',color:'#1A1F2E'}}>{p.name}</div>
+                    <div style={{fontSize:'12px',color:status==='expired'?'#AAA':'#C03030',marginTop:'1px'}}>
+                      {showTime?`유통 ${p.expiryDate} ${p.productionTime}`:`만료 ${p.expiryDate}`}
+                    </div>
+                  </div>
+                  <span style={{fontSize:'11px',fontWeight:700,padding:'2px 8px',borderRadius:'20px',flexShrink:0,background:status==='expired'?'#EEE':'#FFE0E0',color:status==='expired'?'#999':'#C03030'}}>
+                    {status==='expired'?'초과':'오늘'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        }
+      </div>
+    </div>
+  );
+}
+
+// ─── 제품 카드 ────────────────────────────────────────────────────────────────
+function ProductCard({product,cat,categories,onDelete,onUpdate}){
+  const [editing,setEditing]=useState(false);
+  const [editCatId,setEditCatId]=useState(product.categoryId);
+  const [editExpiry,setEditExpiry]=useState(product.expiryDate||'');
+  const [editDays,setEditDays]=useState('');
+  const [editTime,setEditTime]=useState(product.productionTime||'');
+
+  const ep=getDatePart(product.expiryDate||'');
+  const validDate=ep&&/^\d{4}-\d{2}-\d{2}$/.test(ep);
+  const status=validDate?getStatus(product.expiryDate):'nodate';
+  const m=SM[validDate?status:'nodate'];
+  const showTime=cat?.useTime&&product.productionTime;
+
+  function saveEdit(){
+    const updates={...product,categoryId:editCatId,productionTime:editTime||undefined};
+    if(editExpiry){ const ep2=getDatePart(editExpiry); if(ep2&&ep2.length>=10) updates.expiryDate=ep2; }
+    if(editDays&&!isNaN(parseInt(editDays))&&product.productionDate) updates.expiryDate=addDays(product.productionDate,parseInt(editDays));
+    onUpdate(updates); setEditing(false);
+  }
+
+  if(editing) return (
+    <div style={{background:'#fff',border:`2px solid ${cat?.color||'#4A7DF0'}`,borderRadius:'14px',padding:'14px'}}>
+      <div style={{fontWeight:700,fontSize:'14px',marginBottom:'10px'}}>{product.name} 수정</div>
+      <div style={{marginBottom:'10px'}}>
+        <span style={LBL}>카테고리 변경</span>
+        <select value={editCatId} onChange={e=>setEditCatId(e.target.value)} style={{...IST,fontSize:'14px',padding:'8px 10px'}}>
+          {categories.map(c=><option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+        </select>
+      </div>
+      {cat?.useTime&&<div style={{marginBottom:'10px'}}>
+        <span style={LBL}>시간</span>
+        <input type="time" value={editTime} onChange={e=>setEditTime(e.target.value)} style={{...IST,fontSize:'14px',padding:'8px 10px'}}/>
+      </div>}
+      {product.type==='produced'&&<div style={{marginBottom:'10px'}}>
+        <span style={LBL}>폐기일수 변경</span>
+        <input type="number" min="1" max="30" value={editDays} onChange={e=>setEditDays(e.target.value)} placeholder={`현재: ${product.productionDate?Math.round((parseLocalDate(product.expiryDate)-parseLocalDate(product.productionDate))/86400000):'-'}일`} style={{...IST,fontSize:'14px',padding:'8px 10px'}}/>
+        {editDays&&product.productionDate&&<div style={{fontSize:'12px',color:'#888',marginTop:'3px'}}>폐기일 → {addDays(product.productionDate,parseInt(editDays)||0)}</div>}
+      </div>}
+      <div style={{marginBottom:'12px'}}>
+        <span style={LBL}>유통기한</span>
+        <input type="date" value={editExpiry} onChange={e=>setEditExpiry(e.target.value)} style={{...IST,fontSize:'14px',padding:'8px 10px'}}/>
+      </div>
+      <div style={{display:'flex',gap:'6px'}}>
+        <Btn v="pri" sm onClick={saveEdit} style={{flex:1}}>저장</Btn>
+        <Btn v="gho" sm onClick={()=>setEditing(false)} style={{flex:1}}>취소</Btn>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{background:m.cardBg,border:`1.5px solid ${m.border}`,borderRadius:'13px',padding:'12px 14px',animation:status==='today'?'pulse 2s infinite':undefined}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'6px'}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:'flex',alignItems:'center',gap:'6px',marginBottom:'3px',flexWrap:'wrap'}}>
+            <span style={{fontSize:'14px'}}>{cat?.icon}</span>
+            <span style={{fontWeight:700,fontSize:'15px',color:'#1A1F2E'}}>{product.name}</span>
+            {status==='today'&&<span style={{background:'#E04040',color:'#fff',fontSize:'10px',fontWeight:700,padding:'2px 7px',borderRadius:'20px',animation:'pulse 1.5s infinite'}}>❗오늘</span>}
+            {status==='expired'&&<span style={{background:'#999',color:'#fff',fontSize:'10px',fontWeight:700,padding:'2px 7px',borderRadius:'20px'}}>폐기</span>}
+            {status==='nodate'&&<span style={{background:'#E08010',color:'#fff',fontSize:'10px',fontWeight:700,padding:'2px 7px',borderRadius:'20px'}}>날짜없음</span>}
+          </div>
+          {product.productionDate&&<div style={{fontSize:'12px',color:'#999'}}>생산 {fmtShort(product.productionDate)}</div>}
+          <div style={{fontSize:'14px',fontWeight:700,color:validDate?m.color:'#E08010',marginTop:'2px'}}>
+            {validDate
+              ?(showTime?`만료 ${product.expiryDate} ${product.productionTime}`:`만료 ${product.expiryDate}`)
+              :'✎ 날짜 입력 필요'}
+          </div>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:'4px',flexShrink:0}}>
+          <button onClick={()=>setEditing(true)} style={{background:'none',border:'none',color:'#AAB',cursor:'pointer',fontSize:'16px',padding:'2px',lineHeight:1}}>✎</button>
+          <button onClick={()=>onDelete(product.id)} style={{background:'none',border:'none',color:'#CCA',cursor:'pointer',fontSize:'18px',padding:'2px',lineHeight:1}}>×</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── 케이크/조각 추가 모달 ────────────────────────────────────────────────────
+function AddProducedModal({categories,templates,onSave,onClose}){
+  const [step,setStep]=useState('cat');
+  const [cat,setCat]=useState(null);
+  const [selected,setSelected]=useState([]);
+  const [custom,setCustom]=useState('');
+  const [search,setSearch]=useState('');
+  const [entries,setEntries]=useState([{date:todayStr(),days:2}]);
+
+  const producedCats=categories.filter(c=>c.type==='produced');
+  const catTmpls=useMemo(()=>cat?templates.filter(t=>t.catId===cat.id):[],[cat,templates]);
+  const filtered=useMemo(()=>search?catTmpls.filter(t=>t.name.includes(search)):catTmpls,[catTmpls,search]);
+  function toggleItem(t){ setSelected(prev=>prev.find(i=>i.name===t.name)?prev.filter(i=>i.name!==t.name):[...prev,{name:t.name,expiryDays:t.expiryDays}]); }
+  function goDate(){ const items=[...selected]; if(custom.trim()) items.push({name:custom.trim(),expiryDays:cat.expiryDays||2}); if(!items.length) return; setSelected(items); setEntries([{date:todayStr(),days:cat.expiryDays||2}]); setStep('date'); }
+  function handleSave(){ const results=[]; for(const entry of entries){ if(!entry.date) continue; const days=parseInt(entry.days)||cat.expiryDays||2; for(const it of selected){ results.push({id:`p${Date.now()}_${Math.random()}`,categoryId:cat.id,name:it.name,type:'produced',productionDate:entry.date,expiryDate:addDays(entry.date,it.expiryDays||days)}); } } onSave(results); onClose(); }
+
+  if(step==='cat') return (
+    <Modal title="➕ 매장생산 제품 추가" onClose={onClose} wide>
+      <div style={{fontSize:'13px',color:'#888',marginBottom:'12px',background:'#EEF0FA',borderRadius:'10px',padding:'10px 14px'}}>💡 샌드위치·유제품 등은 <b style={{color:'#4A7DF0'}}>카테고리별 탭</b>에서 날짜를 바로 입력하세요</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'10px'}}>
+        {producedCats.map(c=>(
+          <div key={c.id} onClick={()=>{setCat(c);setStep('items');setSelected([]);setSearch('');setCustom('');}} style={{background:`linear-gradient(135deg,${c.color}18,${c.color}08)`,border:`1.5px solid ${c.color}60`,borderRadius:'14px',padding:'18px 12px',cursor:'pointer',textAlign:'center'}}>
+            <div style={{fontSize:'28px',marginBottom:'8px'}}>{c.icon}</div>
+            <div style={{fontWeight:700,fontSize:'15px',color:'#1A1F2E'}}>{c.name}</div>
+            <div style={{fontSize:'12px',color:c.color,marginTop:'3px'}}>기본 {c.expiryDays}일 폐기</div>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+  if(step==='items') return (
+    <Modal title={`${cat.icon} ${cat.name} — 제품 선택`} onClose={onClose} wide>
+      <Inp placeholder="검색..." value={search} onChange={e=>setSearch(e.target.value)}/>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'7px',maxHeight:'340px',overflowY:'auto',marginBottom:'14px',paddingRight:'4px'}}>
+        {filtered.map((t,i)=>{ const sel=selected.find(s=>s.name===t.name); return (
+          <div key={i} onClick={()=>toggleItem(t)} style={{background:sel?`${cat.color}15`:'#fff',border:sel?`2px solid ${cat.color}`:'1.5px solid #DDE',borderRadius:'10px',padding:'10px 13px',cursor:'pointer',display:'flex',alignItems:'center',gap:'8px'}}>
+            <div style={{width:'18px',height:'18px',borderRadius:'5px',border:sel?'none':'1.5px solid #CCC',background:sel?cat.color:'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:'12px',color:'#fff'}}>{sel?'✓':''}</div>
+            <span style={{fontSize:'14px',fontWeight:sel?700:400,color:sel?'#1A1F2E':'#444'}}>{t.name}</span>
+            {t.expiryDays&&t.expiryDays!==cat.expiryDays&&<span style={{fontSize:'11px',color:cat.color,marginLeft:'auto',flexShrink:0,background:cat.color+'20',padding:'1px 6px',borderRadius:'8px'}}>{t.expiryDays}일</span>}
+          </div>
+        ); })}
+      </div>
+      <div style={{borderTop:'1.5px solid #E8EAF0',paddingTop:'12px',marginBottom:'14px'}}>
+        <Inp label="직접 입력" placeholder="제품명..." value={custom} onChange={e=>setCustom(e.target.value)}/>
+      </div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span style={{fontSize:'14px',color:'#888'}}>{selected.length}개 선택</span>
+        <div style={{display:'flex',gap:'8px'}}><Btn v="gho" sm onClick={()=>setStep('cat')}>← 뒤로</Btn><Btn sm onClick={goDate} style={{opacity:(selected.length===0&&!custom.trim())?0.4:1}}>생산일 입력 →</Btn></div>
+      </div>
+    </Modal>
+  );
+  return (
+    <Modal title={`${cat.icon} 생산일 · 폐기일수`} onClose={onClose}>
+      <div style={{background:'#EEF0FA',borderRadius:'12px',padding:'12px',marginBottom:'16px'}}>
+        <div style={{fontSize:'12px',color:'#888',marginBottom:'6px',fontWeight:700,textTransform:'uppercase'}}>선택 ({selected.length}개)</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:'5px'}}>{selected.map((it,i)=><span key={i} style={{background:cat.color+'20',border:`1px solid ${cat.color}50`,borderRadius:'20px',padding:'3px 10px',fontSize:'13px'}}>{it.name}{it.expiryDays&&it.expiryDays!==cat.expiryDays?` (${it.expiryDays}일)`:''}</span>)}</div>
+      </div>
+      {entries.map((entry,i)=>(
+        <div key={i} style={{display:'flex',gap:'8px',marginBottom:'8px',alignItems:'center',background:'#fff',borderRadius:'12px',padding:'10px 12px',border:'1.5px solid #DDE'}}>
+          <input type="date" value={entry.date} onChange={e=>{const ne=[...entries];ne[i]={...ne[i],date:e.target.value};setEntries(ne);}} style={{...IST,flex:1,padding:'8px 10px',fontSize:'14px'}}/>
+          <input type="number" min="1" max="30" value={entry.days} onChange={e=>{const ne=[...entries];ne[i]={...ne[i],days:e.target.value};setEntries(ne);}} style={{...IST,width:'60px',padding:'8px 8px',fontSize:'14px',textAlign:'center'}}/>
+          <span style={{fontSize:'13px',color:'#888',whiteSpace:'nowrap'}}>일후</span>
+          <span style={{fontSize:'13px',color:'#2EA86B',whiteSpace:'nowrap',minWidth:'55px',fontWeight:600}}>{entry.date?`→${fmtShort(addDays(entry.date,parseInt(entry.days||2)))}`:''}</span>
+          {entries.length>1&&<button onClick={()=>setEntries(entries.filter((_,j)=>j!==i))} style={{background:'none',border:'none',color:'#E04040',cursor:'pointer',fontSize:'20px',padding:'0 2px'}}>×</button>}
+        </div>
+      ))}
+      <Btn v="gho" sm onClick={()=>setEntries([...entries,{date:todayStr(),days:cat.expiryDays||2}])} style={{marginBottom:'16px',width:'100%'}}>+ 생산일 추가</Btn>
+      <div style={{display:'flex',gap:'8px'}}><Btn v="gho" onClick={()=>setStep('items')} style={{flex:1}}>← 뒤로</Btn><Btn onClick={handleSave} style={{flex:2}}>✅ 저장</Btn></div>
+    </Modal>
+  );
+}
+
+// ─── 인라인 입력 행 ───────────────────────────────────────────────────────────
+function InlineRow({tmpl,cat,existingProducts,onAdd}){
+  const [expiry,setExpiry]=useState('');
+  const [time,setTime]=useState('');
+  const existing=existingProducts.filter(p=>p.name===tmpl.name);
+  const latestStatus=existing.length>0?getStatus(existing.reduce((a,b)=>a.expiryDate>b.expiryDate?a:b).expiryDate):null;
+  const sdot=latestStatus?{expired:{color:'#999',label:'폐기'},today:{color:'#E04040',label:'오늘'},tomorrow:{color:'#D07010',label:'내일'},month:{color:'#1A60CC',label:'이번달'},ok:{color:'#2EA86B',label:'정상'},nodate:{color:'#E08010',label:'?'}}[latestStatus]:null;
+  function doAdd(val){
+    const ep=getDatePart(val||'');
+    if(!ep||ep.length<10) return;
+    onAdd({id:`p${Date.now()}_${Math.random()}`,categoryId:cat.id,name:tmpl.name,type:'supplied',expiryDate:ep,productionTime:time||undefined});
+    setExpiry(''); setTime('');
+  }
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:'8px',background:'#fff',borderRadius:'12px',padding:'10px 14px',border:'1.5px solid #E0E3EE'}}>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
+          <span style={{fontSize:'14px',fontWeight:600,color:'#1A1F2E',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{tmpl.name}</span>
+          {sdot&&<span style={{fontSize:'11px',color:sdot.color,fontWeight:700,flexShrink:0,background:sdot.color+'18',padding:'1px 6px',borderRadius:'10px'}}>{sdot.label}</span>}
+        </div>
+        {existing.length>0&&<div style={{fontSize:'11px',color:'#AAA',marginTop:'1px'}}>최근 {existing.reduce((a,b)=>a.expiryDate>b.expiryDate?a:b).expiryDate}{existing[0]?.productionTime?' '+existing[0].productionTime:''}</div>}
+      </div>
+      {cat.useTime&&(
+        <input type="time" value={time} onChange={e=>setTime(e.target.value)}
+          style={{background:'#F4F5FA',border:'1.5px solid #D8DAE8',borderRadius:'8px',padding:'7px 8px',color:'#1A1F2E',fontSize:'13px',outline:'none',fontFamily:'inherit',width:'90px',flexShrink:0}}/>
+      )}
+      <input type="date" value={expiry} onChange={e=>{setExpiry(e.target.value);doAdd(e.target.value);}}
+        style={{background:'#F4F5FA',border:'1.5px solid #D8DAE8',borderRadius:'8px',padding:'7px 10px',color:'#1A1F2E',fontSize:'14px',outline:'none',fontFamily:'inherit',width:'150px',flexShrink:0,cursor:'pointer'}}/>
+    </div>
+  );
+}
+
+function InlineCustomRow({cat,onAdd}){
+  const [name,setName]=useState('');
+  const [expiry,setExpiry]=useState('');
+  const [time,setTime]=useState('');
+  function doAdd(){ const ep=getDatePart(expiry||''); if(!name.trim()||!ep||ep.length<10) return; onAdd({id:`p${Date.now()}_${Math.random()}`,categoryId:cat.id,name:name.trim(),type:'supplied',expiryDate:ep,productionTime:time||undefined}); setName('');setExpiry('');setTime(''); }
+  const ready=name.trim()&&expiry;
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:'8px',background:'#F8F9FE',borderRadius:'12px',padding:'10px 14px',border:'1.5px dashed #CCD'}}>
+      <input value={name} onChange={e=>setName(e.target.value)} placeholder="새 제품명 직접 입력..." style={{flex:1,background:'transparent',border:'none',color:'#1A1F2E',fontSize:'14px',outline:'none',fontFamily:'inherit'}}/>
+      {cat.useTime&&<input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{background:'#fff',border:'1.5px solid #D8DAE8',borderRadius:'8px',padding:'7px 8px',color:'#1A1F2E',fontSize:'13px',outline:'none',fontFamily:'inherit',width:'90px',flexShrink:0}}/>}
+      <input type="date" value={expiry} onChange={e=>setExpiry(e.target.value)} style={{background:'#fff',border:'1.5px solid #D8DAE8',borderRadius:'8px',padding:'7px 10px',color:'#1A1F2E',fontSize:'14px',outline:'none',fontFamily:'inherit',width:'150px',flexShrink:0}}/>
+      <button onClick={doAdd} disabled={!ready} style={{background:ready?cat.color:'#DDD',border:'none',borderRadius:'8px',padding:'8px 14px',color:ready?'#fff':'#999',fontSize:'13px',fontWeight:700,cursor:ready?'pointer':'default',fontFamily:'inherit',flexShrink:0}}>등록</button>
+    </div>
+  );
+}
+
+// ─── 카테고리 관리 모달 ───────────────────────────────────────────────────────
+function CatModal({categories,templates,onSave,onClose}){
+  const [cats,setCats]=useState(categories.map(c=>({...c})));
+  const [tmpls,setTmpls]=useState(templates.map(t=>({...t})));
+  const [tab,setTab]=useState('cats');
+  const [editing,setEditing]=useState(null);
+  const [form,setForm]=useState({name:'',type:'produced',expiryDays:2,color:'#4A7DF0',icon:'📦',useTime:false});
+  const [selCat,setSelCat]=useState(null);
+  const [newTmpl,setNewTmpl]=useState('');
+  const ICONS=['📦','🎂','🍰','🥪','🥗','🥛','🍫','🥤','🍡','🎁','🍕','🍔','🧁','🍩','🥐','🫙'];
+  const COLORS=['#E05C5C','#E07B3A','#D4870F','#3D9E5A','#1A8FA0','#4A7DF0','#B03070','#6B4BB5','#1A6EC2','#2EA86B'];
+  function saveEdit(){ if(!form.name) return; if(editing==='new') setCats([...cats,{id:`cat_${Date.now()}`,...form}]); else setCats(cats.map(c=>c.id===editing?{...c,...form}:c)); setEditing(null); }
+  function addTmpl(){ if(!newTmpl.trim()||!selCat) return; setTmpls([...tmpls,{catId:selCat.id,name:newTmpl.trim()}]); setNewTmpl(''); }
+  function removeTmpl(t){ let r=false; setTmpls(tmpls.filter(x=>{ if(!r&&x.catId===t.catId&&x.name===t.name){r=true;return false;} return true;})); }
+  return (
+    <Modal title="⚙ 관리" onClose={()=>{onSave(cats,tmpls);onClose();}} wide>
+      <div style={{display:'flex',gap:'6px',marginBottom:'16px'}}>
+        {[['cats','카테고리'],['tmpls','제품 목록']].map(([id,label])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{flex:1,background:tab===id?'#4A7DF0':'#EEF0FA',border:'none',borderRadius:'10px',padding:'9px',color:tab===id?'#fff':'#555',fontWeight:600,cursor:'pointer',fontFamily:'inherit',fontSize:'14px'}}>{label}</button>
+        ))}
+      </div>
+      {tab==='cats'&&(editing?(
+        <div>
+          <Inp label="카테고리명" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/>
+          <Sel label="타입" value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
+            <option value="produced">매장생산 (생산일 기준)</option>
+            <option value="mixed">매장생산 (유통기한 직접입력)</option>
+            <option value="supplied">납품제품</option>
+          </Sel>
+          {form.type==='produced'&&<Sel label="기본 폐기일" value={form.expiryDays} onChange={e=>setForm({...form,expiryDays:Number(e.target.value)})}>{[1,2,3,4,5,6,7].map(d=><option key={d} value={d}>{d}일 후</option>)}</Sel>}
+          <div style={{marginBottom:'12px'}}><label style={{display:'flex',alignItems:'center',gap:'8px',cursor:'pointer',fontSize:'14px',color:'#444'}}><input type="checkbox" checked={form.useTime} onChange={e=>setForm({...form,useTime:e.target.checked})} style={{width:'16px',height:'16px'}}/>시간 입력 사용</label></div>
+          <div style={{marginBottom:'13px'}}><span style={LBL}>아이콘</span><div style={{display:'flex',flexWrap:'wrap',gap:'6px'}}>{ICONS.map(ic=><button key={ic} onClick={()=>setForm({...form,icon:ic})} style={{width:'36px',height:'36px',borderRadius:'8px',fontSize:'19px',border:form.icon===ic?'2px solid #4A7DF0':'2px solid transparent',background:form.icon===ic?'#EEF0FA':'#F4F5FA',cursor:'pointer'}}>{ic}</button>)}</div></div>
+          <div style={{marginBottom:'16px'}}><span style={LBL}>색상</span><div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>{COLORS.map(col=><button key={col} onClick={()=>setForm({...form,color:col})} style={{width:'28px',height:'28px',borderRadius:'50%',background:col,border:form.color===col?'3px solid #333':'3px solid transparent',cursor:'pointer'}}/>)}</div></div>
+          <div style={{display:'flex',gap:'8px'}}><Btn onClick={saveEdit} style={{flex:1}}>저장</Btn><Btn v="gho" onClick={()=>setEditing(null)} style={{flex:1}}>취소</Btn></div>
+        </div>
+      ):(
+        <>
+          <div style={{display:'flex',flexDirection:'column',gap:'8px',marginBottom:'14px',maxHeight:'360px',overflowY:'auto'}}>
+            {cats.map(cat=>(
+              <div key={cat.id} style={{display:'flex',alignItems:'center',gap:'10px',background:'#fff',borderRadius:'12px',padding:'11px 12px',border:'1.5px solid #E8EAF2'}}>
+                <div style={{width:'36px',height:'36px',borderRadius:'10px',background:cat.color+'20',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'19px',flexShrink:0}}>{cat.icon}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:'15px',color:'#1A1F2E'}}>{cat.name}</div>
+                  <div style={{fontSize:'12px',color:'#888'}}>{cat.type==='produced'?`생산일 기준·${cat.expiryDays}일`:cat.type==='mixed'?'직접입력':'납품'}{cat.useTime?'·시간입력':''}</div>
+                </div>
+                <Btn v="gho" sm onClick={()=>{setEditing(cat.id);setForm({name:cat.name,type:cat.type,expiryDays:cat.expiryDays||2,color:cat.color,icon:cat.icon,useTime:cat.useTime||false});}}>수정</Btn>
+                <button onClick={()=>setCats(cats.filter(c=>c.id!==cat.id))} style={{background:'none',border:'none',color:'#E04040',cursor:'pointer',fontSize:'20px',padding:'0 2px',flexShrink:0}}>×</button>
+              </div>
+            ))}
+          </div>
+          <Btn v="gho" onClick={()=>{setEditing('new');setForm({name:'',type:'produced',expiryDays:2,color:'#4A7DF0',icon:'📦',useTime:false});}} style={{width:'100%'}}>+ 카테고리 추가</Btn>
+        </>
+      ))}
+      {tab==='tmpls'&&(!selCat?(
+        <>
+          <div style={{fontSize:'13px',color:'#888',marginBottom:'10px'}}>카테고리를 선택하세요</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px'}}>
+            {cats.map(cat=>(
+              <div key={cat.id} onClick={()=>setSelCat(cat)} style={{background:`${cat.color}12`,border:`1.5px solid ${cat.color}40`,borderRadius:'12px',padding:'12px',cursor:'pointer',textAlign:'center'}}>
+                <div style={{fontSize:'22px',marginBottom:'4px'}}>{cat.icon}</div>
+                <div style={{fontSize:'13px',fontWeight:600,color:'#1A1F2E'}}>{cat.name}</div>
+                <div style={{fontSize:'12px',color:cat.color}}>{tmpls.filter(t=>t.catId===cat.id).length}개</div>
+              </div>
+            ))}
+          </div>
+        </>
+      ):(
+        <>
+          <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'12px'}}>
+            <button onClick={()=>setSelCat(null)} style={{background:'none',border:'none',color:'#4A7DF0',cursor:'pointer',fontSize:'14px',fontWeight:600,padding:0}}>← 뒤로</button>
+            <span style={{fontWeight:700,fontSize:'15px',color:'#1A1F2E'}}>{selCat.icon} {selCat.name}</span>
+          </div>
+          <div style={{display:'flex',gap:'8px',marginBottom:'12px'}}>
+            <input value={newTmpl} onChange={e=>setNewTmpl(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTmpl()} placeholder="새 제품명 입력 후 Enter..." style={{...IST,flex:1,fontSize:'14px'}}/>
+            <Btn sm onClick={addTmpl}>추가</Btn>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:'6px',maxHeight:'300px',overflowY:'auto'}}>
+            {tmpls.filter(t=>t.catId===selCat.id).map((t,i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',background:'#fff',borderRadius:'9px',padding:'9px 12px',border:'1.5px solid #E8EAF2'}}>
+                <span style={{flex:1,fontSize:'14px',color:'#1A1F2E'}}>{t.name}</span>
+                {t.expiryDays&&<span style={{fontSize:'12px',color:selCat.color,marginRight:'8px',background:selCat.color+'15',padding:'1px 7px',borderRadius:'8px'}}>{t.expiryDays}일</span>}
+                <button onClick={()=>removeTmpl(t)} style={{background:'none',border:'none',color:'#E04040',cursor:'pointer',fontSize:'18px',padding:'0 2px',opacity:0.6}}>×</button>
+              </div>
+            ))}
+            {tmpls.filter(t=>t.catId===selCat.id).length===0&&<div style={{textAlign:'center',padding:'20px',color:'#AAA',fontSize:'13px'}}>제품 없음</div>}
+          </div>
+        </>
+      ))}
+    </Modal>
+  );
+}
+
+
+// ─── 데이터 조회 뷰 ───────────────────────────────────────────────────────────
+function DataView({products, categories}){
+  const [sortBy,setSortBy]=useState('expiryDate'); // expiryDate | category | name
+  const [filterCat,setFilterCat]=useState('all');
+  const [search,setSearch]=useState('');
+
+  const sorted = useMemo(()=>{
+    let list = [...products];
+    if(filterCat!=='all') list=list.filter(p=>p.categoryId===filterCat);
+    if(search) list=list.filter(p=>p.name.includes(search));
+    list.sort((a,b)=>{
+      if(sortBy==='expiryDate') return (a.expiryDate||'').localeCompare(b.expiryDate||'');
+      if(sortBy==='category') return (a.categoryId||'').localeCompare(b.categoryId||'');
+      return (a.name||'').localeCompare(b.name||'');
+    });
+    return list;
+  },[products,sortBy,filterCat,search]);
+
+  const STATUS_LABEL={expired:'폐기',today:'오늘',tomorrow:'내일',month:'이번달',ok:'정상',nodate:'미입력'};
+  const STATUS_COLOR={expired:'#AAA',today:'#E04040',tomorrow:'#D4870F',month:'#1A60CC',ok:'#2EA86B',nodate:'#E08010'};
+
+  return (
+    <div style={{animation:'fadeIn 0.2s ease'}}>
+      {/* 필터/검색 */}
+      <div style={{background:'#fff',borderRadius:'16px',padding:'16px',marginBottom:'14px',boxShadow:'0 2px 8px rgba(0,0,0,0.06)',border:'1px solid #E8EAF0'}}>
+        <div style={{display:'flex',gap:'8px',marginBottom:'10px',flexWrap:'wrap'}}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="제품명 검색..."
+            style={{flex:1,minWidth:'150px',background:'#F4F5FA',border:'1.5px solid #E0E3EE',borderRadius:'8px',padding:'8px 12px',fontSize:'14px',outline:'none',fontFamily:'inherit',color:'#1A1F2E'}}/>
+          <select value={sortBy} onChange={e=>setSortBy(e.target.value)}
+            style={{background:'#F4F5FA',border:'1.5px solid #E0E3EE',borderRadius:'8px',padding:'8px 12px',fontSize:'14px',outline:'none',fontFamily:'inherit',color:'#1A1F2E'}}>
+            <option value="expiryDate">유통기한순</option>
+            <option value="category">카테고리순</option>
+            <option value="name">이름순</option>
+          </select>
+        </div>
+        {/* 카테고리 필터 */}
+        <div style={{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'2px'}}>
+          <button onClick={()=>setFilterCat('all')} style={{background:filterCat==='all'?'#4A7DF0':'#F4F5FA',border:`1.5px solid ${filterCat==='all'?'#4A7DF0':'#E0E3EE'}`,borderRadius:'20px',padding:'5px 14px',fontSize:'13px',fontWeight:600,cursor:'pointer',color:filterCat==='all'?'#fff':'#555',whiteSpace:'nowrap',fontFamily:'inherit',flexShrink:0}}>
+            전체 ({products.length})
+          </button>
+          {categories.map(cat=>{
+            const cnt=products.filter(p=>p.categoryId===cat.id).length;
+            if(cnt===0) return null;
+            return <button key={cat.id} onClick={()=>setFilterCat(filterCat===cat.id?'all':cat.id)}
+              style={{background:filterCat===cat.id?cat.color:'#F4F5FA',border:`1.5px solid ${filterCat===cat.id?cat.color:'#E0E3EE'}`,borderRadius:'20px',padding:'5px 14px',fontSize:'13px',fontWeight:600,cursor:'pointer',color:filterCat===cat.id?'#fff':'#555',whiteSpace:'nowrap',fontFamily:'inherit',flexShrink:0}}>
+              {cat.icon} {cat.name} ({cnt})
+            </button>;
+          })}
+        </div>
+      </div>
+
+      {/* 총계 */}
+      <div style={{fontSize:'13px',color:'#AAA',marginBottom:'8px',fontWeight:600}}>
+        {sorted.length}개 제품
+      </div>
+
+      {/* 테이블 */}
+      {sorted.length===0
+        ?<div style={{textAlign:'center',padding:'48px',color:'#CCC'}}><div style={{fontSize:'36px',marginBottom:'10px'}}>📭</div><div>등록된 제품이 없습니다</div></div>
+        :<div style={{background:'#fff',borderRadius:'16px',overflow:'hidden',boxShadow:'0 2px 8px rgba(0,0,0,0.06)',border:'1px solid #E8EAF0'}}>
+          {/* 테이블 헤더 */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 2.5fr 1.2fr 1.2fr 0.8fr',background:'#F4F5FA',borderBottom:'1.5px solid #E8EAF0',padding:'10px 16px',gap:'8px'}}>
+            {['카테고리','제품명','유통기한','생산일','상태'].map(h=>(
+              <div key={h} style={{fontSize:'12px',fontWeight:700,color:'#888',textTransform:'uppercase',letterSpacing:'0.05em'}}>{h}</div>
+            ))}
+          </div>
+          {/* 테이블 행 */}
+          {sorted.map((p,i)=>{
+            const cat=categories.find(c=>c.id===p.categoryId);
+            const status=getStatus(p.expiryDate);
+            const statusLabel=STATUS_LABEL[status]||'';
+            const statusColor=STATUS_COLOR[status]||'#AAA';
+            return (
+              <div key={p.id} style={{display:'grid',gridTemplateColumns:'1fr 2.5fr 1.2fr 1.2fr 0.8fr',padding:'11px 16px',gap:'8px',borderBottom:i<sorted.length-1?'1px solid #F0F1F8':'none',background:status==='today'?'#FFF8F8':status==='expired'?'#FAFAFA':'#fff',alignItems:'center'}}>
+                <div style={{fontSize:'13px',color:'#555',display:'flex',alignItems:'center',gap:'4px'}}>
+                  <span>{cat?.icon}</span>
+                  <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{cat?.name}</span>
+                </div>
+                <div style={{fontSize:'14px',fontWeight:600,color:'#1A1F2E',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}</div>
+                <div style={{fontSize:'13px',color:statusColor,fontWeight:600}}>
+                  {p.expiryDate||'-'}
+                  {cat?.useTime&&p.productionTime?<div style={{fontSize:'11px',color:'#AAA'}}>{p.productionTime}</div>:null}
+                </div>
+                <div style={{fontSize:'12px',color:'#AAA'}}>{p.productionDate||'-'}</div>
+                <div>
+                  <span style={{fontSize:'11px',fontWeight:700,padding:'2px 8px',borderRadius:'20px',background:statusColor+'18',color:statusColor}}>
+                    {statusLabel}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      }
+    </div>
+  );
+}
+
+// ─── 메인 앱 ─────────────────────────────────────────────────────────────────
+function App(){
+  const {data,update,syncStatus,lastSync,refresh}=useStorage();
+  const [view,setView]=useState('checklist');
+  const [selCat,setSelCat]=useState(null);
+  const [filter,setFilter]=useState('today');
+  const [search,setSearch]=useState('');
+  const [modal,setModal]=useState(null);
+
+  const {categories,templates,products}=data;
+
+  const addProds=items=>update(d=>({...d,products:[...d.products,...items]}));
+  const delProd=id=>update(d=>({...d,products:d.products.filter(p=>p.id!==id)}));
+  const updProd=prod=>update(d=>({...d,products:d.products.map(p=>p.id===prod.id?prod:p)}));
+  const saveCats=(cats,tmpls)=>update(d=>({...d,categories:cats,templates:tmpls}));
+
+  const todayN=useMemo(()=>products.filter(p=>getStatus(p.expiryDate)==='today').length,[products]);
+  const tomorrowN=useMemo(()=>products.filter(p=>getStatus(p.expiryDate)==='tomorrow').length,[products]);
+  const expiredN=useMemo(()=>products.filter(p=>getStatus(p.expiryDate)==='expired').length,[products]);
+
+  const catProds=useMemo(()=>selCat?products.filter(p=>p.categoryId===selCat.id).sort((a,b)=>a.expiryDate.localeCompare(b.expiryDate)):[],[products,selCat]);
+  const filteredProds=useMemo(()=>{
+    const t=todayStr(),tom=tomorrowStr(),m=thisMonthStr();
+    let f=products;
+    if(filter==='today') f=products.filter(p=>getDatePart(p.expiryDate)===t);
+    else if(filter==='tomorrow') f=products.filter(p=>getDatePart(p.expiryDate)===tom);
+    else if(filter==='month') f=products.filter(p=>getDatePart(p.expiryDate).startsWith(m));
+    else if(filter==='expired') f=products.filter(p=>getDatePart(p.expiryDate)<t);
+    if(search) f=f.filter(p=>p.name.includes(search));
+    return f.sort((a,b)=>a.expiryDate.localeCompare(b.expiryDate));
+  },[products,filter,search]);
+
+  const currentSelCat=selCat?categories.find(c=>c.id===selCat.id)||selCat:null;
+  const now=new Date();
+  const dateStr=`${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일`;
+
+  const TABS=[
+    {id:'checklist',label:'체크리스트'},
+    {id:'category',label:'카테고리별'},
+    {id:'filter',label:`임박${(todayN+tomorrowN)>0?` (${todayN+tomorrowN})`:''}`},
+    {id:'data',label:'데이터 조회'},
+  ];
+
+  return (
+    <div style={{minHeight:'100vh',background:'#ECEEF4',maxWidth:'960px',margin:'0 auto'}}>
+      {/* 헤더 */}
+      <div style={{background:'#fff',padding:'16px 24px 0',position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 10px rgba(0,0,0,0.07)'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px',flexWrap:'wrap',gap:'8px'}}>
+          <div>
+            <div style={{fontSize:'12px',color:'#AAA'}}>{dateStr}</div>
+            <div style={{fontSize:'24px',fontWeight:900,color:'#1A1F2E',letterSpacing:'-0.5px',lineHeight:1.2}}>유통기한 관리</div>
+          </div>
+          <div style={{display:'flex',gap:'8px',alignItems:'center',flexWrap:'wrap'}}>
+            <SyncBadge status={syncStatus} lastSync={lastSync} onRefresh={refresh}/>
+            <Btn v="gho" sm onClick={()=>setModal('cat')}>⚙ 관리</Btn>
+            <Btn sm onClick={()=>setModal('add')}>＋ 추가</Btn>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:'2px',overflowX:'auto'}}>
+          {TABS.map(tab=>(
+            <button key={tab.id} onClick={()=>setView(tab.id)} style={{background:'transparent',border:'none',borderBottom:view===tab.id?'3px solid #4A7DF0':'3px solid transparent',color:view===tab.id?'#4A7DF0':'#AAA',padding:'8px 16px',cursor:'pointer',fontWeight:view===tab.id?700:400,fontSize:'14px',whiteSpace:'nowrap',fontFamily:'inherit',marginBottom:'-1px',flexShrink:0}}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{padding:'18px 24px',animation:'fadeIn 0.2s ease'}}>
+
+        {/* 체크리스트 탭 */}
+        {view==='checklist'&&<ChecklistView products={products} categories={categories}/>}
+
+        {/* 카테고리별 탭 */}
+        {view==='category'&&<>
+          <div style={{display:'flex',gap:'8px',overflowX:'auto',paddingBottom:'12px',marginBottom:'16px'}}>
+            {categories.map(cat=>(
+              <button key={cat.id} onClick={()=>setSelCat(cat)} style={{background:selCat?.id===cat.id?cat.color:'#fff',border:`1.5px solid ${selCat?.id===cat.id?cat.color:'#DDE'}`,borderRadius:'20px',padding:'8px 16px',color:selCat?.id===cat.id?'#fff':'#555',fontWeight:600,fontSize:'14px',cursor:'pointer',whiteSpace:'nowrap',fontFamily:'inherit',flexShrink:0,boxShadow:'0 1px 4px rgba(0,0,0,0.05)'}}>
+                {cat.icon} {cat.name}
+              </button>
+            ))}
+          </div>
+          {!currentSelCat&&<div style={{textAlign:'center',padding:'48px',color:'#CCC'}}><div style={{fontSize:'36px',marginBottom:'10px'}}>☝️</div><div>위에서 카테고리를 선택하세요</div></div>}
+          {currentSelCat&&currentSelCat.type==='produced'&&<>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}}>
+              <div><div style={{fontWeight:700,fontSize:'20px',color:'#1A1F2E'}}>{currentSelCat.icon} {currentSelCat.name}</div><div style={{fontSize:'14px',color:'#AAA'}}>기본 {currentSelCat.expiryDays}일 폐기 · {catProds.length}개 등록</div></div>
+              <Btn sm onClick={()=>setModal('add')}>＋ 생산일 등록</Btn>
+            </div>
+            {catProds.length===0?<div style={{textAlign:'center',padding:'48px',color:'#CCC'}}><div style={{fontSize:'36px',marginBottom:'10px'}}>{currentSelCat.icon}</div><div>등록된 제품이 없습니다</div></div>
+            :<div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'10px'}}>{catProds.map(p=><ProductCard key={p.id} product={p} cat={currentSelCat} categories={categories} onDelete={delProd} onUpdate={updProd}/>)}</div>}
+          </>}
+          {currentSelCat&&(currentSelCat.type==='supplied'||currentSelCat.type==='mixed')&&(()=>{
+            const catTmpls=templates.filter(t=>t.catId===currentSelCat.id);
+            return <>
+              <div style={{marginBottom:'12px'}}>
+                <div style={{fontWeight:700,fontSize:'20px',color:'#1A1F2E'}}>{currentSelCat.icon} {currentSelCat.name}</div>
+                <div style={{fontSize:'14px',color:'#AAA'}}>{currentSelCat.type==='mixed'?'직접입력':'납품제품'}{currentSelCat.useTime?' · 시간 입력':''}</div>
+              </div>
+              {catProds.filter(p=>['today','expired'].includes(getStatus(p.expiryDate))).length>0&&(
+                <div style={{background:'#FFF0F0',border:'1.5px solid #FFAAAA',borderRadius:'12px',padding:'10px 14px',marginBottom:'12px',fontSize:'14px',color:'#C03030',animation:'pulse 2s infinite'}}>
+                  ❗ {catProds.filter(p=>['today','expired'].includes(getStatus(p.expiryDate))).length}개 오늘 마감/초과
+                </div>
+              )}
+              <div style={{display:'flex',flexDirection:'column',gap:'7px',marginBottom:'10px'}}>
+                {catTmpls.map((t,i)=><InlineRow key={i} tmpl={t} cat={currentSelCat} existingProducts={catProds} onAdd={p=>addProds([p])}/>)}
+              </div>
+              <InlineCustomRow cat={currentSelCat} onAdd={p=>addProds([p])}/>
+              {catProds.length>0&&<>
+                <div style={{fontSize:'12px',color:'#AAA',margin:'18px 0 8px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.05em'}}>등록된 제품 ({catProds.length})</div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'10px'}}>{catProds.map(p=><ProductCard key={p.id} product={p} cat={currentSelCat} categories={categories} onDelete={delProd} onUpdate={updProd}/>)}</div>
+              </>}
+            </>;
+          })()}
+        </>}
+
+        {/* 임박 필터 탭 */}
+        {view==='filter'&&<>
+          <div style={{display:'flex',gap:'8px',marginBottom:'14px',overflowX:'auto'}}>
+            {[{id:'today',label:'오늘마감',color:'#E04040',n:todayN},{id:'tomorrow',label:'내일마감',color:'#D4870F',n:tomorrowN},{id:'month',label:'이번달',color:'#1A60CC'},{id:'expired',label:'초과',color:'#AAA',n:expiredN}].map(f=>(
+              <button key={f.id} onClick={()=>setFilter(f.id)} style={{background:filter===f.id?f.color:'#fff',border:`1.5px solid ${filter===f.id?f.color:'#DDE'}`,borderRadius:'20px',padding:'8px 16px',color:filter===f.id?'#fff':'#555',fontWeight:600,fontSize:'14px',cursor:'pointer',whiteSpace:'nowrap',fontFamily:'inherit',flexShrink:0}}>
+                {f.label}{f.n>0?` (${f.n})`:''}
+              </button>
+            ))}
+          </div>
+          <input placeholder="제품명 검색..." value={search} onChange={e=>setSearch(e.target.value)} style={{...IST,marginBottom:'14px',boxShadow:'0 1px 4px rgba(0,0,0,0.05)'}}/>
+          {filteredProds.length===0?<div style={{textAlign:'center',padding:'48px',color:'#CCC'}}><div style={{fontSize:'36px',marginBottom:'10px'}}>✅</div><div>해당 제품이 없습니다</div></div>
+          :<div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'10px'}}>{filteredProds.map(p=>{const cat=categories.find(c=>c.id===p.categoryId);return <ProductCard key={p.id} product={p} cat={cat} categories={categories} onDelete={delProd} onUpdate={updProd}/>;})}</div>}
+        </>}
+      </div>
+
+        {/* 데이터 조회 탭 */}
+        {view==='data'&&<DataView products={products} categories={categories}/>}
+
+      {modal==='add'&&<AddProducedModal categories={categories} templates={templates} onSave={addProds} onClose={()=>setModal(null)}/>}
+      {modal==='cat'&&<CatModal categories={categories} templates={templates} onSave={saveCats} onClose={()=>setModal(null)}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
