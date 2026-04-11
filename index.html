@@ -455,6 +455,7 @@ function ChecklistView({products, categories}){
 // ─── 제품 카드 ────────────────────────────────────────────────────────────────
 function ProductCard({product,cat,categories,onDelete,onUpdate}){
   const [editing,setEditing]=useState(false);
+  const [confirmDel,setConfirmDel]=useState(false);
   const [editCatId,setEditCatId]=useState(product.categoryId);
   const [editExpiry,setEditExpiry]=useState(product.expiryDate||'');
   const [editDays,setEditDays]=useState('');
@@ -522,7 +523,13 @@ function ProductCard({product,cat,categories,onDelete,onUpdate}){
         </div>
         <div style={{display:'flex',flexDirection:'column',gap:'4px',flexShrink:0}}>
           <button onClick={()=>setEditing(true)} style={{background:'none',border:'none',color:'#AAB',cursor:'pointer',fontSize:'16px',padding:'2px',lineHeight:1}}>✎</button>
-          <button onClick={()=>onDelete(product.id)} style={{background:'none',border:'none',color:'#CCA',cursor:'pointer',fontSize:'18px',padding:'2px',lineHeight:1}}>×</button>
+          {confirmDel
+            ?<div style={{display:'flex',flexDirection:'column',gap:'3px'}}>
+               <button onClick={()=>onDelete(product.id)} style={{background:'#E04040',border:'none',borderRadius:'6px',color:'#fff',fontSize:'11px',fontWeight:700,padding:'3px 6px',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>삭제</button>
+               <button onClick={()=>setConfirmDel(false)} style={{background:'#EEE',border:'none',borderRadius:'6px',color:'#555',fontSize:'11px',fontWeight:600,padding:'3px 6px',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>취소</button>
+             </div>
+            :<button onClick={()=>setConfirmDel(true)} style={{background:'none',border:'none',color:'#CCA',cursor:'pointer',fontSize:'18px',padding:'2px',lineHeight:1}}>×</button>
+          }
         </div>
       </div>
     </div>
