@@ -427,7 +427,7 @@ function ChecklistView({products, categories, checks, setChecks}){
           :<div style={{display:'flex',flexDirection:'column',gap:'7px'}}>
             {todayExpired.map(p=>{
               const cat=categories.find(c=>c.id===p.categoryId);
-              const showTime=cat&&cat.useTime&&p.productionTime;
+              const showTime=cat&&cat.useTime;
               const status=getStatus(p.expiryDate);
               return (
                 <div key={p.id} style={{display:'flex',alignItems:'center',gap:'10px',padding:'11px 14px',borderRadius:'12px',background:status==='expired'?'#F5F5F5':'#FFF0F0',border:`1.5px solid ${status==='expired'?'#DDD':'#FFAAAA'}`}}>
@@ -435,7 +435,7 @@ function ChecklistView({products, categories, checks, setChecks}){
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:600,fontSize:'14px',color:'#1A1F2E'}}>{p.name}</div>
                     <div style={{fontSize:'12px',color:status==='expired'?'#AAA':'#C03030',marginTop:'1px'}}>
-                      {showTime?`유통 ${p.expiryDate} ${p.productionTime}`:`만료 ${p.expiryDate}`}
+                      {`만료 ${p.expiryDate}`}{showTime&&p.productionTime&&<span style={{marginLeft:'6px',background:'#FFF0D0',color:'#A06010',borderRadius:'6px',padding:'1px 6px',fontSize:'11px',fontWeight:700}}>{p.productionTime}</span>}
                     </div>
                   </div>
                   <span style={{fontSize:'11px',fontWeight:700,padding:'2px 8px',borderRadius:'20px',flexShrink:0,background:status==='expired'?'#EEE':'#FFE0E0',color:status==='expired'?'#999':'#C03030'}}>
